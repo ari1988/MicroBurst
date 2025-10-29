@@ -61,8 +61,9 @@ Function Invoke-AzUADeploymentScript
 
         [Parameter(Mandatory=$false,
         HelpMessage="Command to run in the deployment script.")]
-        [string]$Command = "(Get-AzAccessToken -ResourceUrl $TokenScope).Token"
+        [string]$Command = "`$AccessToken = Get-AzAccessToken -ResourceUrl $TokenScope; if (`$AccessToken.Token -is [System.Security.SecureString]) { `$ssPtr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR(`$AccessToken.Token); try { `$Token = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR(`$ssPtr)} finally { [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR(`$ssPtr) } } else { `$Token = `$AccessToken.Token }; `$Token"
     )
+
 
     # Check to see if we're logged in
     $LoginStatus = Get-AzContext
@@ -165,8 +166,6 @@ Function Invoke-AzUADeploymentScript
 
     $TempTblRolesSorted = $TempTblRoles | Sort-Object -Property DisplayName,RoleDefinitionName,Scope,ResourceGroup,SubscriptionID -Unique | Select-Object DisplayName,RoleDefinitionName,Scope,ResourceGroup,SubscriptionID
 
-    Write-Verbose "`t$($TempTblRolesSorted.Rows.Count) User Assigned Managed Identity Role Assignments that the current user has access to"
-    
 
     # Select a UA-MI to use
     $roleChoice =  $TempTblRolesSorted | Out-GridView -Title "Select One or More Identities/Roles to run commands as" -PassThru
@@ -219,7 +218,7 @@ Function Invoke-AzUADeploymentScript
                     `"azPowerShellVersion`": `"8.3`",
                     `"timeout`": `"PT30M`",
                     `"arguments`": `"`",
-                    `"scriptContent`": `"`$output = $command; `$DeploymentScriptOutputs = @{}; `$DeploymentScriptOutputs['text'] = `$output`",
+                    `"scriptContent`": `"`$output = `$($command); `$DeploymentScriptOutputs = @{}; `$DeploymentScriptOutputs['text'] = `$output`",
                     `"cleanupPreference`": `"Always`",
                     `"retentionInterval`": `"P1D`"
                 }
