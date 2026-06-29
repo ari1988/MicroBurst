@@ -1,4 +1,4 @@
-﻿<#
+<#
     File: Get-AzAppConfiguration.ps1
     Author: Karl Fosaaen (@kfosaaen), NetSPI - 2022
     Description: PowerShell function for dumping Azure App Configuration key values using the access keys.
@@ -62,6 +62,91 @@ function Compute-HMACSHA256Hash(
     finally {
         $hmac.Dispose()
     }
+}
+
+#This function recurses through all snapshots and retrieves all key/value pairs for each one.
+function Get-Snapshots{
+
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory=$true,
+        HelpMessage="App Configuration Endpoint.")]
+        [string]$AppConfiguration = "",
+        
+        [parameter(Mandatory=$true,
+        HelpMessage="Access Key ID.")]
+        [String]$Id = "",
+
+        [parameter(Mandatory=$true,
+        HelpMessage="Access Key Secret.")]
+        [String]$Secret = "",
+
+        [parameter(Mandatory=$false,
+        HelpMessage="Next Link for Pagination.")]
+        [String]$nextLink = $null
+
+        )
+
+    # nextLink is used for the pagination
+    if($nextLink){$uri = [System.Uri]::new(-join("https://$AppConfiguration.azconfig.io",$nextLink))}
+    else{$uri = [System.Uri]::new("https://$AppConfiguration.azconfig.io/snapshots?api-version=2023-11-01")}
+
+    $headers = Sign-Request $uri.Authority GET $uri.PathAndQuery $null $Id $Secret
+
+    $itemsList = Invoke-WebRequest -Uri $uri -Method Get -Headers $headers
+    
+    $configResults = [System.Text.Encoding]::ASCII.GetString($itemsList.Content) | ConvertFrom-Json
+
+    # Recurse if there are additional links to follow
+    if($configResults.'@nextLink'){Get-Snapshots -AppConfiguration $AppConfiguration -Id $Id -Secret $Secret -nextLink $configResults.'@nextLink'}
+
+    foreach($snapshot in $configResults.items){
+        Get-SnapshotKeyValues -AppConfiguration $AppConfiguration -Id $Id -Secret $Secret -SnapshotName $snapshot.name
+    }
+
+}
+
+
+function Get-SnapshotKeyValues{
+
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory=$true,
+        HelpMessage="App Configuration Endpoint.")]
+        [string]$AppConfiguration = "",
+        
+        [parameter(Mandatory=$true,
+        HelpMessage="Access Key ID.")]
+        [String]$Id = "",
+
+        [parameter(Mandatory=$true,
+        HelpMessage="Access Key Secret.")]
+        [String]$Secret = "",
+
+        [parameter(Mandatory=$true,
+        HelpMessage="Name of the snapshot.")]
+        [String]$SnapshotName = "",
+
+        [parameter(Mandatory=$false,
+        HelpMessage="Next Link for Pagination.")]
+        [String]$nextLink = $null
+
+        )
+
+    # nextLink is used for the pagination
+    if($nextLink){$uri = [System.Uri]::new(-join("https://$AppConfiguration.azconfig.io",$nextLink))}
+    else{$uri = [System.Uri]::new("https://$AppConfiguration.azconfig.io/kv?snapshot=$SnapshotName&api-version=2023-11-01")}
+
+    $headers = Sign-Request $uri.Authority GET $uri.PathAndQuery $null $Id $Secret
+
+    $itemsList = Invoke-WebRequest -Uri $uri -Method Get -Headers $headers
+    
+    $configResults = [System.Text.Encoding]::ASCII.GetString($itemsList.Content) | ConvertFrom-Json
+
+    # Recurse if there are additional links to follow
+    if($configResults.'@nextLink'){Get-SnapshotKeyValues -AppConfiguration $AppConfiguration -Id $Id -Secret $Secret -SnapshotName $SnapshotName -nextLink $configResults.'@nextLink'}
+
+    $configResults.items | select key,value,label,content_type,tags,locked,last_modified,etag
 }
 
 
